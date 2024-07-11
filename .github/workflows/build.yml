@@ -1,0 +1,104 @@
+name: Build Android Application
+
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # build:
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Set up Java
+        uses: actions/setup-java@v2
+        with:
+          distribution: "temurin"
+          java-version: 17
+
+      - name: Update google-services.json and App.tsx
+        run: |
+          PROJECT_NUMBER="${{ secrets.PROJECT_NUMBER }}"
+          PROJECT_ID="${{ secrets.PROJECT_ID }}"
+          STORAGE_BUCKET="${{ secrets.STORAGE_BUCKET }}"
+          MOBILESDK_APP_ID="${{ secrets.MOBILESDK_APP_ID }}"
+          PACKAGE_NAME="${{ secrets.PACKAGE_NAME }}"
+          CURRENT_KEY="${{ secrets.CURRENT_KEY }}"
+          SENDER_ID="${{ secrets.SENDER_ID }}"
+          APP_ID_WEB="${{ secrets.APP_ID_WEB }}"
+          M_ID="${{ secrets.M_ID }}"
+          A_ID="${{ secrets.A_ID }}"
+          JSON_FILE="android/app/google-services.json"
+          JSON_FILE_A="src/App.tsx"
+          JSON_FILE_B="src/firebase/firebase_config.js"
+          sed -i "s|__PROJECT_NUMBER__|${PROJECT_NUMBER}|g" $JSON_FILE
+          sed -i "s|__PROJECT_ID__|${PROJECT_ID}|g" $JSON_FILE
+          sed -i "s|__STORAGE_BUCKET__|${STORAGE_BUCKET}|g" $JSON_FILE
+          sed -i "s|__MOBILESDK_APP_ID__|${MOBILESDK_APP_ID}|g" $JSON_FILE
+          sed -i "s|__PACKAGE_NAME__|${PACKAGE_NAME}|g" $JSON_FILE
+          sed -i "s|__CURRENT_KEY__|${CURRENT_KEY}|g" $JSON_FILE
+          sed -i "s|__SENDER_ID__|${SENDER_ID}|g" $JSON_FILE_A
+          sed -i "s|__SENDER_ID__|${SENDER_ID}|g" $JSON_FILE_B
+          sed -i "s|__APP_ID_WEB__|${APP_ID_WEB}|g" $JSON_FILE_B
+          sed -i "s|__M_ID__|${M_ID}|g" $JSON_FILE_B
+          sed -i "s|__A_ID__|${A_ID}|g" $JSON_FILE_B
+          sed -i "s|__CURRENT_KEY__|${CURRENT_KEY}|g" $JSON_FILE_B
+          sed -i "s|__PROJECT_ID__|${PROJECT_ID}|g" $JSON_FILE_B
+          sed -i "s|__STORAGE_BUCKET__|${STORAGE_BUCKET}|g" $JSON_FILE_B
+        env:
+          PROJECT_NUMBER: ${{ secrets.PROJECT_NUMBER }}
+          PROJECT_ID: ${{ secrets.PROJECT_ID }}
+          STORAGE_BUCKET: ${{ secrets.STORAGE_BUCKET }}
+          MOBILESDK_APP_ID: ${{ secrets.MOBILESDK_APP_ID }}
+          PACKAGE_NAME: ${{ secrets.PACKAGE_NAME }}
+          CURRENT_KEY: ${{ secrets.CURRENT_KEY }}
+          SENDER_ID: ${{ secrets.SENDER_ID }}
+          APP_ID_WEB: ${{ secrets.APP_ID_WEB }}
+          M_ID: ${{ secrets.M_ID }}
+          A_ID: ${{ secrets.A_ID }}
+
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          ./gradlew clean
+          ./gradlew assembleRelease
+
+      - name: Upload Artifact to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FD_PROJECT_ID }}
+          serviceCredentialsFileContent: ${{ secrets.CREDENTIAL_FILE_CONTENT}}
+          groups: testers
+          file: android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Notify User
+        run: |
+          curl --location 'https://testfcm.com/api/notify' \
+            --header 'authority: testfcm.com' \
+            --header 'accept: application/json, text/plain, */*' \
+            --header 'accept-language: en-IN,en;q=0.9,hi-IN;q=0.8,hi;q=0.7,mr-IN;q=0.6,mr;q=0.5,en-GB;q=0.4,en-US;q=0.3' \
+            --header 'content-type: application/json;charset=UTF-8' \
+            --header 'origin: https://testfcm.com' \
+            --header 'referer: https://testfcm.com/' \
+            --header 'sec-ch-ua: "Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"' \
+            --header 'sec-ch-ua-mobile: ?1' \
+            --header 'sec-ch-ua-platform: "Android"' \
+            --header 'sec-fetch-dest: empty' \
+            --header 'sec-fetch-mode: cors' \
+            --header 'sec-fetch-site: same-origin' \
+            --header 'user-agent: Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36' \
+            --data '{
+              "postBody": {
+                "notification": {
+                  "title": "New update available",
+                  "body": "You can check and download the new updates in My Settings > Check for updates.",
+                  "click_action": null,
+                  "icon": null
+                },
+                "data": null,
+                "to": "'"${{ secrets.LABFCM }}"'"
+              },
+              "serverKey": "'"${{ secrets.NSK }}"'"
+            }'
